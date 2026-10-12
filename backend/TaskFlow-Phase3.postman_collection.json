@@ -1,0 +1,974 @@
+{
+  "info": {
+    "name": "TaskFlow API - Phase 3 Tasks",
+    "description": "Task CRUD, search, filtering, statistics, and ownership security tests. Requires a valid {{token}} - run the Phase 2 login first, or run request 3.0 in this collection.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "url", "value": "http://localhost:5000", "type": "string" },
+    { "key": "token", "value": "", "type": "string" },
+    { "key": "token2", "value": "", "type": "string" },
+    { "key": "taskId", "value": "", "type": "string" }
+  ],
+  "item": [
+    {
+      "name": "SETUP",
+      "item": [
+        {
+          "name": "3.0a Login as Ali (main user)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Login succeeded', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const res = pm.response.json();",
+                  "pm.collectionVariables.set('token', res.token);",
+                  "console.log('Ali token saved');"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"ali@test.com\",\n  \"password\": \"123456\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{url}}/api/auth/login",
+              "host": ["{{url}}"],
+              "path": ["api", "auth", "login"]
+            },
+            "description": "Saves Ali's JWT into {{token}}. Run this first."
+          }
+        },
+        {
+          "name": "3.0b Login as Fatima (attacker)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Login succeeded', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const res = pm.response.json();",
+                  "pm.collectionVariables.set('token2', res.token);",
+                  "console.log('Fatima token saved');"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"fatima@test.com\",\n  \"password\": \"123456\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{url}}/api/auth/login",
+              "host": ["{{url}}"],
+              "path": ["api", "auth", "login"]
+            },
+            "description": "Saves Fatima's JWT into {{token2}}. Used in the ownership tests to prove she cannot touch Ali's tasks."
+          }
+        }
+      ]
+    },
+    {
+      "name": "CRUD",
+      "item": [
+        {
+          "name": "3.1 Create task (high priority)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 201', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "const res = pm.response.json();",
+                  "",
+                  "pm.test('Task returned with an id', function () {",
+                  "    pm.expect(res.task).to.have.property('_id');",
+                  "});",
+                  "",
+                  "pm.test('Owner is set from the token', function () {",
+                  "    pm.expect(res.task.user).to.be.a('string');",
+                  "});",
+                  "",
+                  "pm.test('Fields saved correctly', function () {",
+                  "    pm.expect(res.task.title).to.eql('Finish MERN project');",
+                  "    pm.expect(res.task.priority).to.eql('high');",
+                  "    pm.expect(res.task.status).to.eql('pending');",
+                  "});",
+                  "",
+                  "// Save the id for the read/update/delete tests",
+                  "pm.collectionVariables.set('taskId', res.task._id);",
+                  "console.log('taskId saved: ' + res.task._id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Finish MERN project\",\n  \"description\": \"Complete all 5 phases of TaskFlow\",\n  \"priority\": \"high\",\n  \"dueDate\": \"2026-09-01\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{url}}/api/tasks",
+              "host": ["{{url}}"],
+              "path": ["api", "tasks"]
+            },
+            "description": "Note there is no 'user' field in the body. The controller takes it from req.user._id, which came from the verified token."
+          }
+        },
+        {
+          "name": "3.2 Create task (defaults applied)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 201', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "const res = pm.response.json();",
+                  "",
+                  "pm.test('Schema defaults applied', function () {",
+                  "    pm.expect(res.task.status).to.eql('pending');",
+                  "    pm.expect(res.task.priority).to.eql('medium');",
+                  "    pm.expect(res.task.description).to.eql('');",
+                  "});",
+                  "",
+                  "pm.test('Timestamps created', function () {",
+                  "    pm.expect(res.task).to.have.property('createdAt');",
+                  "    pm.expect(res.task).to.have.property('updatedAt');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Buy groceries\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{url}}/api/tasks",
+              "host": ["{{url}}"],
+              "path": ["api", "tasks"]
+            },
+            "description": "Only a title is sent. Proves the schema defaults (pending / medium / empty description) work."
+          }
+        },
+        {
+          "name": "3.3 Create task (no title = 400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 400', function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});",
+                  "",
+                  "pm.test('Validation rejects it', function () {",
+                  "    const res = pm.response.json();",
+                  "    pm.expect(res.success).to.eql(false);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"description\": \"A task with no title\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{url}}/api/tasks",
+              "host": ["{{url}}"],
+              "path": ["api", "tasks"]
+            }
+          }
+        },
+        {
+          "name": "3.4 Create task (invalid priority = 400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 400', function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});",
+                  "",
+                  "pm.test('Enum validation fired', function () {",
+                  "    const res = pm.response.json();",
+                  "    pm.expect(res.message.toLowerCase()).to.include('priority');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Bad priority task\",\n  \"priority\": \"urgent\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{url}}/api/tasks",
+              "host": ["{{url}}"],
+              "path": ["api", "tasks"]
+            },
+            "description": "'urgent' is not in the enum [low, medium, high], so Mongoose rejects it."
+          }
+        },
+        {
+          "name": "3.5 Get all tasks",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const res = pm.response.json();",
+                  "",
+                  "pm.test('Returns an array with a count', function () {",
+                  "    pm.expect(res.tasks).to.be.an('array');",
+                  "    pm.expect(res.count).to.eql(res.tasks.length);",
+                  "});",
+                  "",
+                  "pm.test('At least 2 tasks exist', function () {",
+                  "    pm.expect(res.tasks.length).to.be.at.least(2);",
+                  "});",
+                  "",
+                  "pm.test('Sorted newest first', function () {",
+                  "    if (res.tasks.length > 1) {",
+                  "        const first = new Date(res.tasks[0].createdAt);",
+                  "        const second = new Date(res.tasks[1].createdAt);",
+                  "        pm.expect(first >= second).to.be.true;",
+                  "    }",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": {
+              "raw": "{{url}}/api/tasks",
+              "host": ["{{url}}"],
+              "path": ["api", "tasks"]
+            }
+          }
+        },
+        {
+          "name": "3.6 Get single task",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Correct task returned', function () {",
+                  "    const res = pm.response.json();",
+                  "    pm.expect(res.task._id).to.eql(pm.collectionVariables.get('taskId'));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": {
+              "raw": "{{url}}/api/tasks/{{taskId}}",
+              "host": ["{{url}}"],
+              "path": ["api", "tasks", "{{taskId}}"]
+            }
+          }
+        },
+        {
+          "name": "3.7 Update task (change status)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const res = pm.response.json();",
+                  "",
+                  "pm.test('Status changed to in-progress', function () {",
+                  "    pm.expect(res.task.status).to.eql('in-progress');",
+                  "});",
+                  "",
+                  "pm.test('Other fields untouched by the partial update', function () {",
+                  "    pm.expect(res.task.title).to.eql('Finish MERN project');",
+                  "    pm.expect(res.task.priority).to.eql('high');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"in-progress\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{url}}/api/tasks/{{taskId}}",
+              "host": ["{{url}}"],
+              "path": ["api", "tasks", "{{taskId}}"]
+            },
+            "description": "Only status is sent. The controller builds the update object from defined fields only, so title and priority survive."
+          }
+        },
+        {
+          "name": "3.8 Update task (invalid status = 400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 400', function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});",
+                  "",
+                  "pm.test('runValidators caught it', function () {",
+                  "    const res = pm.response.json();",
+                  "    pm.expect(res.success).to.eql(false);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"almost-done\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{url}}/api/tasks/{{taskId}}",
+              "host": ["{{url}}"],
+              "path": ["api", "tasks", "{{taskId}}"]
+            },
+            "description": "Without runValidators:true in findOneAndUpdate, Mongoose would skip enum checks on updates and save the bad value."
+          }
+        },
+        {
+          "name": "3.9 Get task stats",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const s = pm.response.json().stats;",
+                  "",
+                  "pm.test('All four counters present', function () {",
+                  "    pm.expect(s).to.have.property('total');",
+                  "    pm.expect(s).to.have.property('pending');",
+                  "    pm.expect(s).to.have.property('inProgress');",
+                  "    pm.expect(s).to.have.property('completed');",
+                  "});",
+                  "",
+                  "pm.test('Counters add up to the total', function () {",
+                  "    pm.expect(s.pending + s.inProgress + s.completed).to.eql(s.total);",
+                  "});",
+                  "",
+                  "console.log('Stats: ' + JSON.stringify(s));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": {
+              "raw": "{{url}}/api/tasks/stats",
+              "host": ["{{url}}"],
+              "path": ["api", "tasks", "stats"]
+            },
+            "description": "Proves the route-order fix works. If /stats came after /:id, Express would treat 'stats' as an id and this would fail."
+          }
+        }
+      ]
+    },
+    {
+      "name": "SEARCH & FILTER",
+      "item": [
+        {
+          "name": "3.10 Search by keyword",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const res = pm.response.json();",
+                  "",
+                  "pm.test('Every result matches the keyword', function () {",
+                  "    res.tasks.forEach(function (t) {",
+                  "        const text = (t.title + ' ' + t.description).toLowerCase();",
+                  "        pm.expect(text).to.include('mern');",
+                  "    });",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": {
+              "raw": "{{url}}/api/tasks?search=mern",
+              "host": ["{{url}}"],
+              "path": ["api", "tasks"],
+              "query": [{ "key": "search", "value": "mern" }]
+            },
+            "description": "Lowercase 'mern' matches 'MERN' because of the $options: 'i' flag. $or searches both title and description."
+          }
+        },
+        {
+          "name": "3.11 Filter by status",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Only pending tasks returned', function () {",
+                  "    const res = pm.response.json();",
+                  "    res.tasks.forEach(function (t) {",
+                  "        pm.expect(t.status).to.eql('pending');",
+                  "    });",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": {
+              "raw": "{{url}}/api/tasks?status=pending",
+              "host": ["{{url}}"],
+              "path": ["api", "tasks"],
+              "query": [{ "key": "status", "value": "pending" }]
+            }
+          }
+        },
+        {
+          "name": "3.12 Filter by priority",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Only high priority returned', function () {",
+                  "    const res = pm.response.json();",
+                  "    res.tasks.forEach(function (t) {",
+                  "        pm.expect(t.priority).to.eql('high');",
+                  "    });",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": {
+              "raw": "{{url}}/api/tasks?priority=high",
+              "host": ["{{url}}"],
+              "path": ["api", "tasks"],
+              "query": [{ "key": "priority", "value": "high" }]
+            }
+          }
+        },
+        {
+          "name": "3.13 Combined filters",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Both conditions satisfied', function () {",
+                  "    const res = pm.response.json();",
+                  "    res.tasks.forEach(function (t) {",
+                  "        pm.expect(t.status).to.eql('in-progress');",
+                  "        pm.expect(t.priority).to.eql('high');",
+                  "    });",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": {
+              "raw": "{{url}}/api/tasks?status=in-progress&priority=high",
+              "host": ["{{url}}"],
+              "path": ["api", "tasks"],
+              "query": [
+                { "key": "status", "value": "in-progress" },
+                { "key": "priority", "value": "high" }
+              ]
+            },
+            "description": "Multiple query params combine with AND, since each one adds a key to the same query object."
+          }
+        },
+        {
+          "name": "3.14 Filter 'all' returns everything",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Returns multiple statuses', function () {",
+                  "    const res = pm.response.json();",
+                  "    pm.expect(res.tasks.length).to.be.at.least(2);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": {
+              "raw": "{{url}}/api/tasks?status=all&priority=all",
+              "host": ["{{url}}"],
+              "path": ["api", "tasks"],
+              "query": [
+                { "key": "status", "value": "all" },
+                { "key": "priority", "value": "all" }
+              ]
+            },
+            "description": "The frontend dropdowns send 'all' for no filter. The controller skips those conditions."
+          }
+        }
+      ]
+    },
+    {
+      "name": "SECURITY - Ownership",
+      "item": [
+        {
+          "name": "3.15 Fatima sees only HER tasks",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const res = pm.response.json();",
+                  "const aliTaskId = pm.collectionVariables.get('taskId');",
+                  "",
+                  "pm.test(\"Ali's task is NOT in Fatima's list\", function () {",
+                  "    const ids = res.tasks.map(function (t) { return t._id; });",
+                  "    pm.expect(ids).to.not.include(aliTaskId);",
+                  "});",
+                  "",
+                  "console.log('Fatima sees ' + res.count + ' tasks');"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token2}}" }],
+            "url": {
+              "raw": "{{url}}/api/tasks",
+              "host": ["{{url}}"],
+              "path": ["api", "tasks"]
+            },
+            "description": "Same endpoint, different token. The query is scoped by req.user._id, so Fatima gets a completely separate list."
+          }
+        },
+        {
+          "name": "3.16 Fatima CANNOT read Ali's task",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 404', function () {",
+                  "    pm.response.to.have.status(404);",
+                  "});",
+                  "",
+                  "pm.test('Returns not-found, not forbidden', function () {",
+                  "    const res = pm.response.json();",
+                  "    pm.expect(res.message).to.eql('Task not found');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token2}}" }],
+            "url": {
+              "raw": "{{url}}/api/tasks/{{taskId}}",
+              "host": ["{{url}}"],
+              "path": ["api", "tasks", "{{taskId}}"]
+            },
+            "description": "THE KEY SECURITY TEST. Fatima has the exact id of Ali's task and a valid token, yet gets 404. findOne({_id, user}) simply does not match. 404 rather than 403 leaks nothing about whether the task exists."
+          }
+        },
+        {
+          "name": "3.17 Fatima CANNOT update Ali's task",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 404', function () {",
+                  "    pm.response.to.have.status(404);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token2}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"HACKED BY FATIMA\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{url}}/api/tasks/{{taskId}}",
+              "host": ["{{url}}"],
+              "path": ["api", "tasks", "{{taskId}}"]
+            }
+          }
+        },
+        {
+          "name": "3.18 Fatima CANNOT delete Ali's task",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 404', function () {",
+                  "    pm.response.to.have.status(404);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token2}}" }],
+            "url": {
+              "raw": "{{url}}/api/tasks/{{taskId}}",
+              "host": ["{{url}}"],
+              "path": ["api", "tasks", "{{taskId}}"]
+            }
+          }
+        },
+        {
+          "name": "3.19 Ali's task survived the attacks",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Title was NOT changed', function () {",
+                  "    const res = pm.response.json();",
+                  "    pm.expect(res.task.title).to.eql('Finish MERN project');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": {
+              "raw": "{{url}}/api/tasks/{{taskId}}",
+              "host": ["{{url}}"],
+              "path": ["api", "tasks", "{{taskId}}"]
+            },
+            "description": "Confirms nothing was modified or deleted by 3.17 and 3.18."
+          }
+        },
+        {
+          "name": "3.20 No token = blocked",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 401', function () {",
+                  "    pm.response.to.have.status(401);",
+                  "});",
+                  "",
+                  "pm.test('router.use(protect) covers every task route', function () {",
+                  "    const res = pm.response.json();",
+                  "    pm.expect(res.message).to.include('no token');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{url}}/api/tasks",
+              "host": ["{{url}}"],
+              "path": ["api", "tasks"]
+            }
+          }
+        },
+        {
+          "name": "3.21 Spoofed user field is ignored",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 201', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "",
+                  "pm.test('Owner came from the token, not the body', function () {",
+                  "    const res = pm.response.json();",
+                  "    pm.expect(res.task.user).to.not.eql('000000000000000000000000');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Spoof attempt\",\n  \"user\": \"000000000000000000000000\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{url}}/api/tasks",
+              "host": ["{{url}}"],
+              "path": ["api", "tasks"]
+            },
+            "description": "The client tries to assign the task to a different user. The controller destructures only title/description/status/priority/dueDate from the body, so the injected 'user' is silently discarded."
+          }
+        }
+      ]
+    },
+    {
+      "name": "CLEANUP",
+      "item": [
+        {
+          "name": "3.22 Delete task (owner can)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Confirms deletion', function () {",
+                  "    const res = pm.response.json();",
+                  "    pm.expect(res.success).to.eql(true);",
+                  "    pm.expect(res.taskId).to.eql(pm.collectionVariables.get('taskId'));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": {
+              "raw": "{{url}}/api/tasks/{{taskId}}",
+              "host": ["{{url}}"],
+              "path": ["api", "tasks", "{{taskId}}"]
+            }
+          }
+        },
+        {
+          "name": "3.23 Deleted task is gone (404)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 404', function () {",
+                  "    pm.response.to.have.status(404);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": {
+              "raw": "{{url}}/api/tasks/{{taskId}}",
+              "host": ["{{url}}"],
+              "path": ["api", "tasks", "{{taskId}}"]
+            }
+          }
+        },
+        {
+          "name": "3.24 Invalid id format = 400",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 400', function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});",
+                  "",
+                  "pm.test('CastError handled gracefully', function () {",
+                  "    const res = pm.response.json();",
+                  "    pm.expect(res.message).to.include('Invalid task id');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }],
+            "url": {
+              "raw": "{{url}}/api/tasks/not-a-real-id",
+              "host": ["{{url}}"],
+              "path": ["api", "tasks", "not-a-real-id"]
+            },
+            "description": "A MongoDB ObjectId must be 24 hex characters. Anything else throws a CastError, which the catch block turns into a clean 400."
+          }
+        }
+      ]
+    }
+  ]
+}

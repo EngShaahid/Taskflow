@@ -1,0 +1,520 @@
+{
+  "info": {
+    "name": "TaskFlow API",
+    "description": "TaskFlow MERN Task Management System - Phase 1 & 2 tests (health check + authentication). Import this into Postman and run the requests top to bottom.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "url",
+      "value": "http://localhost:5000",
+      "type": "string"
+    },
+    {
+      "key": "token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "email",
+      "value": "ali@test.com",
+      "type": "string"
+    },
+    {
+      "key": "password",
+      "value": "123456",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "PHASE 1 - Health & 404",
+      "item": [
+        {
+          "name": "1.1 Health Check",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Server reports it is running', function () {",
+                  "    const res = pm.response.json();",
+                  "    pm.expect(res.success).to.eql(true);",
+                  "    pm.expect(res.message).to.include('running');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{url}}/api/health",
+              "host": ["{{url}}"],
+              "path": ["api", "health"]
+            },
+            "description": "Proves the Express server is alive. No database or auth involved."
+          }
+        },
+        {
+          "name": "1.2 404 Handler",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 404', function () {",
+                  "    pm.response.to.have.status(404);",
+                  "});",
+                  "",
+                  "pm.test('Returns a not-found message', function () {",
+                  "    const res = pm.response.json();",
+                  "    pm.expect(res.success).to.eql(false);",
+                  "    pm.expect(res.message).to.include('Route not found');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{url}}/api/wrong",
+              "host": ["{{url}}"],
+              "path": ["api", "wrong"]
+            },
+            "description": "Confirms the catch-all 404 middleware runs when no route matches."
+          }
+        }
+      ]
+    },
+    {
+      "name": "PHASE 2 - Authentication",
+      "item": [
+        {
+          "name": "2.1 Register (success)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Accept 201 (new user) or 400 (already registered from a previous run)",
+                  "pm.test('Status is 201 or 400', function () {",
+                  "    pm.expect([201, 400]).to.include(pm.response.code);",
+                  "});",
+                  "",
+                  "const res = pm.response.json();",
+                  "",
+                  "if (pm.response.code === 201) {",
+                  "    pm.test('Returns user object', function () {",
+                  "        pm.expect(res.user).to.have.property('_id');",
+                  "        pm.expect(res.user).to.have.property('name');",
+                  "        pm.expect(res.user).to.have.property('email');",
+                  "    });",
+                  "",
+                  "    pm.test('Password is NOT returned', function () {",
+                  "        pm.expect(res.user).to.not.have.property('password');",
+                  "    });",
+                  "",
+                  "    pm.test('Returns a JWT token', function () {",
+                  "        pm.expect(res.token).to.be.a('string');",
+                  "        pm.expect(res.token.split('.')).to.have.lengthOf(3);",
+                  "    });",
+                  "",
+                  "    // Save the token for the protected requests",
+                  "    pm.collectionVariables.set('token', res.token);",
+                  "    console.log('Token saved from register');",
+                  "} else {",
+                  "    console.log('User already exists - run 2.3 Login instead');",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Ali Hassan\",\n  \"email\": \"{{email}}\",\n  \"password\": \"{{password}}\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{url}}/api/auth/register",
+              "host": ["{{url}}"],
+              "path": ["api", "auth", "register"]
+            },
+            "description": "Creates a new user. The password is hashed by the pre-save hook in models/User.js. Returns a JWT so the frontend can log the user in immediately."
+          }
+        },
+        {
+          "name": "2.2 Register (duplicate email)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 400', function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});",
+                  "",
+                  "pm.test('Rejects the duplicate email', function () {",
+                  "    const res = pm.response.json();",
+                  "    pm.expect(res.success).to.eql(false);",
+                  "    pm.expect(res.message).to.include('already exists');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Ali Hassan\",\n  \"email\": \"{{email}}\",\n  \"password\": \"{{password}}\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{url}}/api/auth/register",
+              "host": ["{{url}}"],
+              "path": ["api", "auth", "register"]
+            },
+            "description": "Run this AFTER 2.1. Proves the unique-email check works."
+          }
+        },
+        {
+          "name": "2.3 Register (missing fields)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 400', function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});",
+                  "",
+                  "pm.test('Validation error returned', function () {",
+                  "    const res = pm.response.json();",
+                  "    pm.expect(res.success).to.eql(false);",
+                  "    pm.expect(res.message).to.include('provide');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"incomplete@test.com\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{url}}/api/auth/register",
+              "host": ["{{url}}"],
+              "path": ["api", "auth", "register"]
+            },
+            "description": "Sends only an email. Proves server-side validation runs before touching the database."
+          }
+        },
+        {
+          "name": "2.4 Login (success)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const res = pm.response.json();",
+                  "",
+                  "pm.test('Returns user and token', function () {",
+                  "    pm.expect(res.success).to.eql(true);",
+                  "    pm.expect(res.user).to.have.property('_id');",
+                  "    pm.expect(res.token).to.be.a('string');",
+                  "});",
+                  "",
+                  "pm.test('Password is NOT returned', function () {",
+                  "    pm.expect(res.user).to.not.have.property('password');",
+                  "});",
+                  "",
+                  "// Save the fresh token for protected requests",
+                  "pm.collectionVariables.set('token', res.token);",
+                  "console.log('Token saved from login');"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{email}}\",\n  \"password\": \"{{password}}\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{url}}/api/auth/login",
+              "host": ["{{url}}"],
+              "path": ["api", "auth", "login"]
+            },
+            "description": "bcrypt.compare() re-hashes the entered password and checks it against the stored hash. Saves the token into the {{token}} collection variable automatically."
+          }
+        },
+        {
+          "name": "2.5 Login (wrong password)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 401', function () {",
+                  "    pm.response.to.have.status(401);",
+                  "});",
+                  "",
+                  "pm.test('Generic error message (prevents email enumeration)', function () {",
+                  "    const res = pm.response.json();",
+                  "    pm.expect(res.success).to.eql(false);",
+                  "    pm.expect(res.message).to.eql('Invalid email or password');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{email}}\",\n  \"password\": \"totallywrongpassword\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{url}}/api/auth/login",
+              "host": ["{{url}}"],
+              "path": ["api", "auth", "login"]
+            },
+            "description": "The error message is deliberately identical to the unknown-email case, so an attacker cannot discover which emails are registered."
+          }
+        },
+        {
+          "name": "2.6 Login (unknown email)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 401', function () {",
+                  "    pm.response.to.have.status(401);",
+                  "});",
+                  "",
+                  "pm.test('Same message as wrong password', function () {",
+                  "    const res = pm.response.json();",
+                  "    pm.expect(res.message).to.eql('Invalid email or password');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"nobody@nowhere.com\",\n  \"password\": \"{{password}}\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{url}}/api/auth/login",
+              "host": ["{{url}}"],
+              "path": ["api", "auth", "login"]
+            },
+            "description": "Compare this response with 2.5 - they must be identical. That is the security property."
+          }
+        },
+        {
+          "name": "2.7 Get Me (valid token)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "const res = pm.response.json();",
+                  "",
+                  "pm.test('Returns the logged-in user', function () {",
+                  "    pm.expect(res.success).to.eql(true);",
+                  "    pm.expect(res.user).to.have.property('_id');",
+                  "    pm.expect(res.user).to.have.property('email');",
+                  "});",
+                  "",
+                  "pm.test('Password hash is NOT exposed (select:false works)', function () {",
+                  "    pm.expect(res.user).to.not.have.property('password');",
+                  "});",
+                  "",
+                  "pm.test('Timestamps exist', function () {",
+                  "    pm.expect(res.user).to.have.property('createdAt');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "url": {
+              "raw": "{{url}}/api/auth/me",
+              "host": ["{{url}}"],
+              "path": ["api", "auth", "me"]
+            },
+            "description": "Protected route. The protect middleware verifies the JWT signature, loads the user from MongoDB, and attaches it to req.user before this controller runs."
+          }
+        },
+        {
+          "name": "2.8 Get Me (no token)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 401', function () {",
+                  "    pm.response.to.have.status(401);",
+                  "});",
+                  "",
+                  "pm.test('Blocked with no-token message', function () {",
+                  "    const res = pm.response.json();",
+                  "    pm.expect(res.success).to.eql(false);",
+                  "    pm.expect(res.message).to.include('no token');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{url}}/api/auth/me",
+              "host": ["{{url}}"],
+              "path": ["api", "auth", "me"]
+            },
+            "description": "No Authorization header at all. The middleware stops the request before the controller runs."
+          }
+        },
+        {
+          "name": "2.9 Get Me (invalid token)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 401', function () {",
+                  "    pm.response.to.have.status(401);",
+                  "});",
+                  "",
+                  "pm.test('Signature verification failed', function () {",
+                  "    const res = pm.response.json();",
+                  "    pm.expect(res.success).to.eql(false);",
+                  "    pm.expect(res.message).to.include('token failed');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer thisIsAFakeToken123" }
+            ],
+            "url": {
+              "raw": "{{url}}/api/auth/me",
+              "host": ["{{url}}"],
+              "path": ["api", "auth", "me"]
+            },
+            "description": "A forged token. jwt.verify() throws because the signature does not match JWT_SECRET, and the catch block returns 401."
+          }
+        },
+        {
+          "name": "2.10 Register second user (for ownership tests)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status is 201 or 400', function () {",
+                  "    pm.expect([201, 400]).to.include(pm.response.code);",
+                  "});",
+                  "",
+                  "if (pm.response.code === 201) {",
+                  "    const res = pm.response.json();",
+                  "    // Store separately - do NOT overwrite the main token",
+                  "    pm.collectionVariables.set('token2', res.token);",
+                  "    console.log('Second user token saved as {{token2}}');",
+                  "} else {",
+                  "    console.log('Second user already exists');",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Fatima Omar\",\n  \"email\": \"fatima@test.com\",\n  \"password\": \"123456\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{url}}/api/auth/register",
+              "host": ["{{url}}"],
+              "path": ["api", "auth", "register"]
+            },
+            "description": "Creates a second account saved as {{token2}}. You will need this in Phase 3 to prove one user cannot access another user's tasks."
+          }
+        }
+      ]
+    }
+  ]
+}

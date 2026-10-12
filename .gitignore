@@ -1,0 +1,13 @@
+# Dependencies - can be reinstalled with npm install
+node_modules/
+
+# Secrets - NEVER commit this
+.env
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS files
+.DS_Store
+Thumbs.db
